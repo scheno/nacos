@@ -197,6 +197,7 @@ public class ClientWorker implements Closeable {
                 params.put("group", group);
                 params.put("tenant", tenant);
             }
+            // 获取变更配置的接口调用
             result = agent.httpGet(Constants.CONFIG_CONTROLLER_PATH, null, params, agent.getEncode(), readTimeout);
         } catch (Exception ex) {
             String message = String
@@ -207,8 +208,10 @@ public class ClientWorker implements Closeable {
         }
 
         switch (result.getCode()) {
+            // 获取变更的配置成功，添加进缓存里
             case HttpURLConnection.HTTP_OK:
                 LocalConfigInfoProcessor.saveSnapshot(agent.getName(), dataId, group, tenant, result.getData());
+                // result.data 就是我们变更后的配置信息
                 configResponse.setContent(result.getData());
                 String configType;
                 if (result.getHeader().getValue(CONFIG_TYPE) != null) {
@@ -306,11 +309,15 @@ public class ClientWorker implements Closeable {
      */
     public void checkConfigInfo() {
         // Dispatch tasks.
+        // 分任务
         int listenerSize = cacheMap.size();
         // Round up the longingTaskCount.
+        // 向上取整为批数
         int longingTaskCount = (int) Math.ceil(listenerSize / ParamUtil.getPerTaskConfigSize());
+        // 如果监听配置集超过 3000，就创建多个 LongPollingRunnable 线程
         if (longingTaskCount > currentLongingTaskCount) {
             for (int i = (int) currentLongingTaskCount; i < longingTaskCount; i++) {
+                // LongPullingRunnable 实际上是一个线程
                 executorService.execute(new LongPollingRunnable(i));
             }
             currentLongingTaskCount = longingTaskCount;
@@ -377,6 +384,7 @@ public class ClientWorker implements Closeable {
             // increase the client's read timeout to avoid this problem.
 
             long readTimeoutMs = timeout + (long) Math.round(timeout >> 1);
+            // 调用 /v1/cs/configs/listener 接口实现长轮询请求，返回的 HttpResult 里包含存在数据变更的 Data ID、Group、Tenant
             HttpRestResult<String> result = agent
                     .httpPost(Constants.CONFIG_CONTROLLER_PATH + "/listener", headers, params, agent.getEncode(),
                             readTimeoutMs);
@@ -449,6 +457,7 @@ public class ClientWorker implements Closeable {
 
         init(properties);
 
+        // 创建 executor 线程池，只拥有一个核心线程，每隔 10ms 就会执行一次 checkConfigInfo() 方法，检查配置信息
         this.executor = Executors.newScheduledThreadPool(1, new ThreadFactory() {
             @Override
             public Thread newThread(Runnable r) {
@@ -459,6 +468,7 @@ public class ClientWorker implements Closeable {
             }
         });
 
+        // 创建 executorService 线程池，只完成了初始化，后续会用到，主要用于实现客户端的定时长轮询功能
         this.executorService = Executors
                 .newScheduledThreadPool(Runtime.getRuntime().availableProcessors(), new ThreadFactory() {
                     @Override
@@ -470,7 +480,7 @@ public class ClientWorker implements Closeable {
                     }
                 });
 
-        // 每10秒钟检查配置信息
+        // 使用 executor 启动一个每隔 10ms 执行一次的定时任务
         this.executor.scheduleWithFixedDelay(new Runnable() {
             @Override
             public void run() {
@@ -519,10 +529,12 @@ public class ClientWorker implements Closeable {
             List<String> inInitializingCacheList = new ArrayList<String>();
             try {
                 // check failover config
+                // 遍历 CacheData，检查本地配置
                 for (CacheData cacheData : cacheMap.values()) {
                     if (cacheData.getTaskId() == taskId) {
                         cacheDatas.add(cacheData);
                         try {
+                            // 检查本地配置
                             checkLocalConfig(cacheData);
                             if (cacheData.isUseLocalConfigInfo()) {
                                 cacheData.checkListenerMd5();
@@ -534,11 +546,13 @@ public class ClientWorker implements Closeable {
                 }
 
                 // check server config
+                // 通过长轮询请求检查服务端对应的配置是否发生变更
                 List<String> changedGroupKeys = checkUpdateDataIds(cacheDatas, inInitializingCacheList);
                 if (!CollectionUtils.isEmpty(changedGroupKeys)) {
                     LOGGER.info("get changedGroupKeys:" + changedGroupKeys);
                 }
 
+                // 遍历存在变更的 groupKey，重新加载最新的数据
                 for (String groupKey : changedGroupKeys) {
                     String[] key = GroupKey.parseKey(groupKey);
                     String dataId = key[0];
@@ -548,6 +562,7 @@ public class ClientWorker implements Closeable {
                         tenant = key[2];
                     }
                     try {
+                        // 读取变更配置
                         ConfigResponse response = getServerConfig(dataId, group, tenant, 3000L);
                         CacheData cache = cacheMap.get(GroupKey.getKeyTenant(dataId, group, tenant));
                         // FIXME temporary fix https://github.com/alibaba/nacos/issues/7039
@@ -566,6 +581,7 @@ public class ClientWorker implements Closeable {
                         LOGGER.error(message, ioe);
                     }
                 }
+                // 触发事件通知
                 for (CacheData cacheData : cacheDatas) {
                     if (!cacheData.isInitializing() || inInitializingCacheList
                             .contains(GroupKey.getKeyTenant(cacheData.dataId, cacheData.group, cacheData.tenant))) {
@@ -575,6 +591,7 @@ public class ClientWorker implements Closeable {
                 }
                 inInitializingCacheList.clear();
 
+                // 继续定时执行当前线程
                 executorService.execute(this);
 
             } catch (Throwable e) {

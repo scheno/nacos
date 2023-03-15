@@ -32,7 +32,7 @@ import java.util.Properties;
  * @author Nacos
  */
 public class NacosFactory {
-    
+
     /**
      * Create config service.
      *
@@ -41,9 +41,10 @@ public class NacosFactory {
      * @throws NacosException Exception
      */
     public static ConfigService createConfigService(Properties properties) throws NacosException {
+        // 创建 ConfigService
         return ConfigFactory.createConfigService(properties);
     }
-    
+
     /**
      * Create config service.
      *
@@ -54,7 +55,7 @@ public class NacosFactory {
     public static ConfigService createConfigService(String serverAddr) throws NacosException {
         return ConfigFactory.createConfigService(serverAddr);
     }
-    
+
     /**
      * Create naming service.
      *
@@ -65,7 +66,7 @@ public class NacosFactory {
     public static NamingService createNamingService(String serverAddr) throws NacosException {
         return NamingFactory.createNamingService(serverAddr);
     }
-    
+
     /**
      * Create naming service.
      *
@@ -76,7 +77,7 @@ public class NacosFactory {
     public static NamingService createNamingService(Properties properties) throws NacosException {
         return NamingFactory.createNamingService(properties);
     }
-    
+
     /**
      * Create maintain service.
      *
@@ -87,7 +88,7 @@ public class NacosFactory {
     public static NamingMaintainService createMaintainService(String serverAddr) throws NacosException {
         return NamingMaintainFactory.createMaintainService(serverAddr);
     }
-    
+
     /**
      * Create maintain service.
      *
