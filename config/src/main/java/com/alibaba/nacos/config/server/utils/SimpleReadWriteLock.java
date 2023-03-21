@@ -22,11 +22,13 @@ package com.alibaba.nacos.config.server.utils;
  * @author Nacos
  */
 public class SimpleReadWriteLock {
-    
+
     /**
      * Try read lock.
      */
+    // 尝试加读锁，读锁是可以进行并行加锁的，就是读写锁互斥、写写互斥，但是读读不互斥
     public synchronized boolean tryReadLock() {
+        // 是否添加了写锁
         if (isWriteLocked()) {
             return false;
         } else {
@@ -34,17 +36,19 @@ public class SimpleReadWriteLock {
             return true;
         }
     }
-    
+
     /**
      * Release the read lock.
      */
+    // 释放读锁
     public synchronized void releaseReadLock() {
         status--;
     }
-    
+
     /**
      * Try write lock.
      */
+    // 写锁的时候 status = -1 尝试加写锁
     public synchronized boolean tryWriteLock() {
         if (!isFree()) {
             return false;
@@ -53,22 +57,26 @@ public class SimpleReadWriteLock {
             return true;
         }
     }
-    
+
+    // 释放写锁
     public synchronized void releaseWriteLock() {
         status = 0;
     }
-    
+
+    // 是否是写锁
     private boolean isWriteLocked() {
         return status < 0;
     }
-    
+
+    // 是否是没有锁
     private boolean isFree() {
         return status == 0;
     }
-    
+
     /**
      * Zero means no lock; Negative Numbers mean write locks; Positive Numbers mean read locks, and the numeric value
      * represents the number of read locks.
      */
+    // 0 代表没有锁 -1 代表写锁
     private int status = 0;
 }

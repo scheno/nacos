@@ -202,6 +202,7 @@ public class ConfigController {
             @RequestParam(value = "tenant", required = false, defaultValue = StringUtils.EMPTY) String tenant,
             @RequestParam(value = "tag", required = false) String tag)
             throws IOException, ServletException, NacosException {
+        // 校验参数
         // check tenant
         ParamUtils.checkTenant(tenant);
         tenant = NamespaceUtil.processNamespaceParameter(tenant);
@@ -209,7 +210,9 @@ public class ConfigController {
         ParamUtils.checkParam(dataId, group, "datumId", "content");
         ParamUtils.checkParam(tag);
 
+        // 获取客户端请求IP地址
         final String clientIp = RequestUtil.getRemoteIp(request);
+        // 获取请求方法
         inner.doGetConfig(request, response, dataId, group, tenant, tag, clientIp);
     }
 

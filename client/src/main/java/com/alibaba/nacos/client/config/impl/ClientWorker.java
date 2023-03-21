@@ -80,7 +80,8 @@ public class ClientWorker implements Closeable {
     public void addTenantListeners(String dataId, String group, List<? extends Listener> listeners)
             throws NacosException {
         group = blank2defaultGroup(group);
-        String tenant = agent.getTenant();
+        String tenant = agent.getTenant(); // 是 ""
+        // 向缓存数据中添加监听器
         CacheData cache = addCacheDataIfAbsent(dataId, group, tenant);
         for (Listener listener : listeners) {
             cache.addListener(listener);
@@ -143,32 +144,42 @@ public class ClientWorker implements Closeable {
      * @return cache data
      */
     public CacheData addCacheDataIfAbsent(String dataId, String group, String tenant) throws NacosException {
+        // 获取Key信息
         String key = GroupKey.getKeyTenant(dataId, group, tenant);
+        // 在缓存 Map 中获取缓存数据
         CacheData cacheData = cacheMap.get(key);
+        // 如果不为空的情况下那么就返回，如果为空那么就创建一个 CacheData
         if (cacheData != null) {
             return cacheData;
         }
 
+        // 创建一个 CacheData
         cacheData = new CacheData(configFilterChainManager, agent.getName(), dataId, group, tenant);
         // multiple listeners on the same dataid+group and race condition
+        // 将创建好的 cacheData 放入缓存 Map 中
         CacheData lastCacheData = cacheMap.putIfAbsent(key, cacheData);
+        // 如果缓存数据为空的话那么从配置中心拉取，不过此时不为空
         if (lastCacheData == null) {
             //fix issue # 1317
             if (enableRemoteSyncConfig) {
                 ConfigResponse response = getServerConfig(dataId, group, tenant, 3000L);
                 cacheData.setContent(response.getContent());
             }
+            // 计算任务ID
             int taskId = cacheMap.size() / (int) ParamUtil.getPerTaskConfigSize();
+            // 设置任务ID
             cacheData.setTaskId(taskId);
             lastCacheData = cacheData;
         }
 
         // reset so that server not hang this check
+        // 缓存数据初始化完成
         lastCacheData.setInitializing(true);
 
         LOGGER.info("[{}] [subscribe] {}", agent.getName(), key);
         MetricsMonitor.getListenConfigCountMonitor().set(cacheMap.size());
 
+        // 返回最新的缓存数据
         return lastCacheData;
     }
 
@@ -255,11 +266,16 @@ public class ClientWorker implements Closeable {
         final String dataId = cacheData.dataId;
         final String group = cacheData.group;
         final String tenant = cacheData.tenant;
+        // 获取本地文件
         File path = LocalConfigInfoProcessor.getFailoverFile(agent.getName(), dataId, group, tenant);
 
+        // 不使用本地的，但是本地文件存在，那就用本地的，设置为true
         if (!cacheData.isUseLocalConfigInfo() && path.exists()) {
+            // 获取内容
             String content = LocalConfigInfoProcessor.getFailover(agent.getName(), dataId, group, tenant);
+            // 计算MD5
             final String md5 = MD5Utils.md5Hex(content, Constants.ENCODE);
+            // 设置版本
             cacheData.setUseLocalConfigInfo(true);
             cacheData.setLocalConfigInfoVersion(path.lastModified());
             // FIXME temporary fix https://github.com/alibaba/nacos/issues/7039
@@ -275,6 +291,7 @@ public class ClientWorker implements Closeable {
         }
 
         // If use local config info, then it doesn't notify business listener and notify after getting from server.
+        // 使用本地的，但是本地不存在，那就设置成不用本地文件，去Nacos服务端获取配置
         if (cacheData.isUseLocalConfigInfo() && !path.exists()) {
             cacheData.setUseLocalConfigInfo(false);
             LOGGER.warn("[{}] [failover-change] failover file deleted. dataId={}, group={}, tenant={}", agent.getName(),
@@ -283,9 +300,12 @@ public class ClientWorker implements Closeable {
         }
 
         // When it changed.
+        // 使用本地的，本地也有，但是版本号不一样，说明有变更，那就把本地的更新到内存里
         if (cacheData.isUseLocalConfigInfo() && path.exists() && cacheData.getLocalConfigInfoVersion() != path
                 .lastModified()) {
+            // 获取内容
             String content = LocalConfigInfoProcessor.getFailover(agent.getName(), dataId, group, tenant);
+            // 计算MD5
             final String md5 = MD5Utils.md5Hex(content, Constants.ENCODE);
             cacheData.setUseLocalConfigInfo(true);
             cacheData.setLocalConfigInfoVersion(path.lastModified());
@@ -293,6 +313,7 @@ public class ClientWorker implements Closeable {
             String encryptedDataKey = LocalEncryptedDataKeyProcessor
                     .getEncryptDataKeyFailover(agent.getName(), dataId, group, tenant);
             cacheData.setEncryptedDataKey(encryptedDataKey);
+            // 设置缓存信息
             cacheData.setContent(content);
             LOGGER.warn(
                     "[{}] [failover-change] failover file changed. dataId={}, group={}, tenant={}, md5={}, content={}",
@@ -309,7 +330,7 @@ public class ClientWorker implements Closeable {
      */
     public void checkConfigInfo() {
         // Dispatch tasks.
-        // 分任务
+        // 调度任务,这个 cacheMap 在 NacosContextRefresher 初始化的时候进行创建的
         int listenerSize = cacheMap.size();
         // Round up the longingTaskCount.
         // 向上取整为批数
@@ -334,6 +355,7 @@ public class ClientWorker implements Closeable {
      */
     List<String> checkUpdateDataIds(List<CacheData> cacheDatas, List<String> inInitializingCacheList) throws Exception {
         StringBuilder sb = new StringBuilder();
+        // 本地配置检测
         for (CacheData cacheData : cacheDatas) {
             if (!cacheData.isUseLocalConfigInfo()) {
                 sb.append(cacheData.dataId).append(WORD_SEPARATOR);
@@ -352,6 +374,7 @@ public class ClientWorker implements Closeable {
             }
         }
         boolean isInitializingCacheList = !inInitializingCacheList.isEmpty();
+        // 检查更新配置操作
         return checkUpdateConfigStr(sb.toString(), isInitializingCacheList);
     }
 
@@ -485,6 +508,7 @@ public class ClientWorker implements Closeable {
             @Override
             public void run() {
                 try {
+                    // 检查配置信息方法
                     checkConfigInfo();
                 } catch (Throwable e) {
                     LOGGER.error("[" + agent.getName() + "] [sub-check] rotate check error", e);
@@ -531,12 +555,15 @@ public class ClientWorker implements Closeable {
                 // check failover config
                 // 遍历 CacheData，检查本地配置
                 for (CacheData cacheData : cacheMap.values()) {
+                    // 获取任务ID 信息
                     if (cacheData.getTaskId() == taskId) {
                         cacheDatas.add(cacheData);
                         try {
                             // 检查本地配置
                             checkLocalConfig(cacheData);
+                            // 是否开启了使用本地配置信息服务
                             if (cacheData.isUseLocalConfigInfo()) {
+                                // 检测Md5
                                 cacheData.checkListenerMd5();
                             }
                         } catch (Exception e) {
@@ -548,6 +575,7 @@ public class ClientWorker implements Closeable {
                 // check server config
                 // 通过长轮询请求检查服务端对应的配置是否发生变更
                 List<String> changedGroupKeys = checkUpdateDataIds(cacheDatas, inInitializingCacheList);
+                // 如果有变化那么就进行后续处理
                 if (!CollectionUtils.isEmpty(changedGroupKeys)) {
                     LOGGER.info("get changedGroupKeys:" + changedGroupKeys);
                 }
@@ -564,6 +592,7 @@ public class ClientWorker implements Closeable {
                     try {
                         // 读取变更配置
                         ConfigResponse response = getServerConfig(dataId, group, tenant, 3000L);
+                        // 设置到本地缓存中
                         CacheData cache = cacheMap.get(GroupKey.getKeyTenant(dataId, group, tenant));
                         // FIXME temporary fix https://github.com/alibaba/nacos/issues/7039
                         cache.setEncryptedDataKey(response.getEncryptedDataKey());

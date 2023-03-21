@@ -114,6 +114,7 @@ public class NacosConfigService implements ConfigService {
 
     @Override
     public void addListener(String dataId, String group, Listener listener) throws NacosException {
+        // 这个 ClientWorker worker 也是一个核心类
         worker.addTenantListeners(dataId, group, Arrays.asList(listener));
     }
 

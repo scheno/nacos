@@ -34,53 +34,59 @@ import java.util.concurrent.TimeUnit;
  * @author nkorange
  */
 public class ClientBeatProcessor implements Runnable {
-    
+
     public static final long CLIENT_BEAT_TIMEOUT = TimeUnit.SECONDS.toMillis(15);
-    
+
     private RsInfo rsInfo;
-    
+
     private Service service;
-    
+
     @JsonIgnore
     public PushService getPushService() {
         return ApplicationUtils.getBean(PushService.class);
     }
-    
+
     public RsInfo getRsInfo() {
         return rsInfo;
     }
-    
+
     public void setRsInfo(RsInfo rsInfo) {
         this.rsInfo = rsInfo;
     }
-    
+
     public Service getService() {
         return service;
     }
-    
+
     public void setService(Service service) {
         this.service = service;
     }
-    
+
+    // 处理心跳请求
     @Override
     public void run() {
         Service service = this.service;
         if (Loggers.EVT_LOG.isDebugEnabled()) {
             Loggers.EVT_LOG.debug("[CLIENT-BEAT] processing beat: {}", rsInfo.toString());
         }
-        
+
+        // 获取ID
         String ip = rsInfo.getIp();
+        // 端口号
         String clusterName = rsInfo.getCluster();
         int port = rsInfo.getPort();
         Cluster cluster = service.getClusterMap().get(clusterName);
         List<Instance> instances = cluster.allIPs(true);
-        
+
         for (Instance instance : instances) {
             if (instance.getIp().equals(ip) && instance.getPort() == port) {
                 if (Loggers.EVT_LOG.isDebugEnabled()) {
                     Loggers.EVT_LOG.debug("[CLIENT-BEAT] refresh beat: {}", rsInfo.toString());
                 }
+                // 更新一下实例的心跳时间
                 instance.setLastBeat(System.currentTimeMillis());
+                // 如果实例是健康的那么就直接执行完任务，
+                // 如果不是健康的那么就设置成健康的，之后发布服务改变事件和客户端改变事件
                 if (!instance.isMarked() && !instance.isHealthy()) {
                     instance.setHealthy(true);
                     Loggers.EVT_LOG
